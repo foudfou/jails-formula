@@ -18,7 +18,7 @@ jails:
     pg11:
       present: true
       version: 11.2-RELEASE
-      init_scripts: 
+      init_scripts:
         - salt://jails/files/scripts/jail_init.sh
       salt:
         minion_id: pg11.lan
@@ -41,30 +41,30 @@ jails:
             enabled: yes
           }
       fstab:
-        - jail_path: /data/jails/pg11
-          host_path: /jails/pg11/data 
+        - host_path: /data/jails/pg11
+          jail_path: /data
           fstype: nullfs
-          opts: rw 
+          opts: rw
 
-        - jail_path: /data/jails/pg11/data11
-          host_path: /jails/pg11/data/data11 
+        - host_path: /data/jails/pg11/data11
+          jail_path: /data/data11
           fstype: nullfs
-          opts: rw 
+          opts: rw
           user: 770
           group: 770
           mode: 700
 
-        - jail_path: /data/jails/pg11/backups
-          host_path: /jails/pg11/data/backups 
+        - host_path: /data/jails/pg11/backups
+          jail_path: /data/backups
           fstype: nullfs
-          opts: rw 
+          opts: rw
           user: 770
           group: 770
           mode: 700
     oldstuff:
       present: true
       version: 10.4-RELEASE
-      init_scripts: 
+      init_scripts:
         - salt://jails/files/scripts/jail_init.sh
       salt:
         minion_id: oldstuff.lan
@@ -75,7 +75,7 @@ jails:
         depend = pg11;
     anotherjail:
       version: 12.1-RELEASE
-      init_scripts: 
+      init_scripts:
         - salt://jails/files/scripts/jail_init.sh
         - salt://jails/files/scripts/another_script.sh
       salt:
@@ -90,10 +90,10 @@ jails:
           diff: patch-login.conf
           hash: 07ebd5eaebb5f9bb87e769356bec62fb
       fstab:
-        - jail_path: /data/jails/anotherjail
-          host_path: /jails/anotherjail/data 
+        - host_path: /data/jails/anotherjail
+          jail_path: /jails/anotherjail/data
           fstype: nullfs
-          opts: rw 
+          opts: rw
       flavours:
         - pkg-no-freebsd
         - pkg-my_repo_121

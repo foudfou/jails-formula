@@ -1,6 +1,6 @@
 present: true
-arch: {{ salt.grains.get('osarch') }}
-version: {{ salt.grains.get('osrelease') ~ '-RELEASE' }}
+arch: {{ grains['osarch'] }}
+version: {{ grains['osrelease'] ~ '-RELEASE' }}
 rc_conf:
   salt_minion_enable: "YES"
 salt:

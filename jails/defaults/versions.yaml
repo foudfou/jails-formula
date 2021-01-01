@@ -46,8 +46,10 @@
 
 12.2-RELEASE:
   rc_conf:
-    rpcbind_enable: "NO"
-    syslogd_flags: "-ss"
-    sendmail_enable: "NONE"
+    rpcbind_enable: "NO"             # Disable the RPC daemon
+    syslogd_flags: "-ss"             # Disable syslogd listening for incoming conns
+    sendmail_enable: "NONE"          # Completely disable sendmail
     sshd_enable: "YES"
-    cron_flags: "$cron_flags -J 15"
+    # FIXME "$cron_flags -J 15" triggers sysrc on every run
+    cron_flags: "-J 15"              # Prevent jails running cron jobs at same time
+    clear_tmp_enable: "YES"          # Clear /tmp at startup

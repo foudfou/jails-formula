@@ -21,7 +21,16 @@ jail_root:
       - sls: zfs.fs
     {% endif %}
 
-{% for jail, cfg in jails.instances.items() if cfg.present %}
+jail_enable:
+  sysrc.managed:
+    - value: "YES"
+
+jail_list:
+  sysrc.managed:
+    - value: "{{ jails.instances | selectattr('present') | join(' ', attribute='name') }}"
+
+{% for cfg in jails.instances if cfg.present %}
+{% set jail = cfg.name %}
 
 #######################
 # JAIL ROOT DIRECTORY #
@@ -30,15 +39,15 @@ jail_root:
 {{ jail }}_directory:
   file.managed:
     - name: {{ jails.root | path_join(jail, '.saltstack') }}
-    - contents_pillar: jails:instances:{{ jail }}:version
+    - contents: {{ cfg.version }}
     - mode: 600
     - user: root
     - group: wheel
     {%- if not jails.use_zfs %}
     - makedirs: True
     {%- endif %}
-    - unless: 
-      - ls -A {{ jails.root | path_join(jail) }} | grep -q .
+    - unless:
+      - test -f {{ jails.root | path_join(jail, '.saltstack') }}
 
 ########
 # SETS #
@@ -71,6 +80,7 @@ jail_root:
     - user: root
     - group: wheel
     - mode: 644
+    - replace: False
     - require:
       {% for set in cfg.sets %}
       - cmd: {{ jail }}_set_{{ set }}
@@ -81,7 +91,7 @@ jail_root:
 {{ jail }}_rc_conf_{{ rc_param }}:
   sysrc.managed:
     - name: {{ rc_param }}
-    - value: {{ rc_value }}
+    - value: "{{ rc_value }}"
     - file: {{ jails.root | path_join(jail, 'etc', 'rc.conf') }}
     - require_in:
       - cmd: {{ jail }}_start
@@ -99,7 +109,7 @@ jail_root:
 
 {{ jail }}_patch_{{ patch.target }}_{{ loop.index }}:
   file.patch:
-    - name: {{ jails.root | path_join(jail, patch.target) }} 
+    - name: {{ jails.root | path_join(jail, patch.target) }}
     - source: salt://jails/files/patches/{{ cfg.version | path_join(patch.diff) }}
     - onchanges:
       - file: {{ jail }}_directory
@@ -108,8 +118,8 @@ jail_root:
 
 {{ jail }}_cap_mkdb_{{ loop.index }}:
   cmd.run:
-    - name: cap_mkdb {{ jails.root | path_join(jail, 'etc', 'login.conf') }} 
-    - cwd: {{ jails.root | path_join(jail) }} 
+    - name: cap_mkdb {{ jails.root | path_join(jail, 'etc', 'login.conf') }}
+    - cwd: {{ jails.root | path_join(jail) }}
     - onchanges:
       - file: {{ jail }}_patch_{{ patch.target }}_{{ loop.index }}
 
@@ -148,7 +158,7 @@ jail_root:
     - onchanges:
       - file: {{ jail }}_directory
 
-{% for repo in cfg.get('pkg', {}) %}
+{% for repo, content in cfg.get('pkg', {}).items() %}
 
 {{ jail }}_pkg_repo_{{ repo }}:
   file.managed:
@@ -156,7 +166,7 @@ jail_root:
     - user: root
     - group: wheel
     - mode: 644
-    - contents_pillar: jails:instances:{{ jail }}:pkg:{{ repo }}
+    - contents: {{ content }}
     - onchanges:
       - file: {{ jail }}_pkg_repos
 
@@ -168,9 +178,11 @@ jail_root:
 
 {{ jail }}_fstab:
   file.touch:
-    - name: /etc/fstab.{{ jail }}
+    - name: {{ jails.root }}/{{ jail }}.fstab
     - require_in:
       - cmd: {{ jail }}_start
+    - onlyif:
+      - test ! -f {{ jails.root }}/{{ jail }}.fstab
 
 ###############
 # JAIL MOUNTS #
@@ -182,21 +194,21 @@ jail_root:
 
 {%- if not jails.use_zfs and jail_mount.fstype == 'nullfs' %}
 
-{{ jail }}_{{ jail_mount.jail_path }}_host_directory:
+{{ jail }}_{{ jail_mount.host_path }}_host_directory:
   file.directory:
-    - name: {{ jail_mount.jail_path }}
+    - name: {{ jail_mount.host_path }}
     - user: root
     - group: wheel
     - makedirs: True
     - require_in:
-      - file: {{ jail }}_{{ jail_mount.jail_path }}_directory
+      - file: {{ jail }}_{{ jail_mount.host_path }}_directory
 
 {%- endif %}
 
-{{ jail }}_{{ jail_mount.jail_path }}_directory:
+{{ jail }}_{{ jail_mount.host_path }}_directory:
   file.directory:
-    - name: {{ jail_mount.host_path }}
-    {% if not salt.mount.is_mounted(jail_mount.host_path) %}
+    - name: {{ jail_mount.jail_path }}
+    {% if not salt.mount.is_mounted(jail_mount.jail_path) %}
     - user: {{ jail_mount.get('user', 'root') }}
     - group: {{ jail_mount.get('group', 'wheel') }}
     - mode: {{ jail_mount.get('mode', 755) }}
@@ -207,13 +219,13 @@ jail_root:
     - require:
       - file: {{ jail }}_directory
     - require_in:
-      - mount: {{ jail }}_{{ jail_mount.jail_path }}_fstab
+      - mount: {{ jail }}_{{ jail_mount.host_path }}_fstab
 
-{{ jail }}_{{ jail_mount.jail_path }}_fstab:
+{{ jail }}_{{ jail_mount.host_path }}_fstab:
   mount.mounted:
-    - name: {{ jail_mount.host_path }}
-    - config: /etc/fstab.{{ jail }}
-    - device: {{ jail_mount.jail_path }}
+    - name: {{ jails.root | path_join(jail, jail_mount.jail_path) }}
+    - config: {{ jails.root }}/{{ jail }}.fstab
+    - device: {{ jail_mount.host_path }}
     - fstype: {{ jail_mount.fstype }}
     - opts: {{ jail_mount.opts }}
     - persist: True
@@ -223,11 +235,11 @@ jail_root:
 
 {% else %}
 
-{{ jail }}_{{ jail_mount.jail_path }}_fstab:
+{{ jail }}_{{ jail_mount.host_path }}_fstab:
   mount.unmounted:
-    - name: {{ jail_mount.host_path }}
-    - config: /etc/fstab.{{ jail }}
-    - device: {{ jail_mount.jail_path }}
+    - name: {{ jails.root | path_join(jail, jail_mount.jail_path) }}
+    - config: {{ jails.root }}/{{ jail }}.fstab
+    - device: {{ jail_mount.host_path }}
     - persist: True
     - require_in:
       - cmd: {{ jail }}_start
@@ -240,18 +252,12 @@ jail_root:
 # START JAIL #
 ##############
 
-{{ jail }}_jail_list:
-  cmd.run:
-    - name: sysrc jail_list+={{ jail }}
-    - cwd: /tmp
-
 {{ jail }}_start:
   cmd.run:
     - name: service jail onestart {{ jail }}
     - cwd: /tmp
     - require:
       - file: jail_etc_jail_conf
-      - cmd: {{ jail }}_jail_list
     - onchanges:
       - file: {{ jail }}_directory
 
@@ -279,5 +285,5 @@ jail_root:
       - file: {{ jail }}_directory
 
 {% endfor %}  # INIT SCRIPTS
- 
+
 {% endfor %}  # JAILS LIST
